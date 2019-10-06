@@ -420,7 +420,7 @@ open class HeartRateOmeter {
                     }
 
                     // STEP 2 CALCULATE PEAKS
-                    val eps = 2//15,30
+                    val eps = 1//15,30
 
                     //in peaksMap key is peak value and value is position
                     peaksMap.clear()
@@ -428,7 +428,7 @@ open class HeartRateOmeter {
                         if (i >= eps && i < derivArray.size - eps) {
                             val value = derivArray.get(i)
                             if (value == findMax(derivArray.subList(i-eps,i+1)) &&
-                                    value == findMax(derivArray.subList(i, i + eps))) {
+                                    value == findMax(derivArray.subList(i, i + eps + 1))) {
                                 peaksMap.put(value, i)
                             }
                         }
@@ -450,7 +450,7 @@ open class HeartRateOmeter {
                         while(iterator.hasNext() && i < k) {
                             val value = iterator.next()
                             if (previous != -1) {
-                                distances.add(value - previous)
+                                distances.add(Math.abs(value - previous))
                             }
                             previous = value
                             i++
@@ -480,16 +480,17 @@ open class HeartRateOmeter {
                             .minBy { (_, dispersion) -> dispersion }?.index
 
                     indexOfMin?.also {
-                        //val resultDistanceList = distancesList[indexOfMin]
-                        //val mean = resultDistanceList.sum()/resultDistanceList.size
-                        if (indexOfMin >= 0 && indexOfMin < meanList.size) {
-                            val resultMean = meanList[indexOfMin]
+                        val resultDistanceList = distancesList[indexOfMin]
+                        val mean = resultDistanceList.sum()/resultDistanceList.size
+                        //if (indexOfMin >= 0 && indexOfMin < meanList.size) {
+                            //val resultMean = meanList[indexOfMin]
                             val FRAMES_PER_SECOND = 30
-                            val heartRate = FRAMES_PER_SECOND * 60 / resultMean
+                            val heartRate = FRAMES_PER_SECOND * 60 / mean
                             previousBeatsAverage = heartRate
-                            Log.d("HeartCheck", "heartRate=$heartRate")
+                            Log.d("HeartCheck", "heartRate=$heartRate" +
+                                    " index=$indexOfMin mean=$mean peaks=${peaksMap.size}")
                             publishSubject.onNext(Bpm(heartRate, PulseType.ON))
-                        }
+                        //}
                     }
 
                     // CALCULATE HR
