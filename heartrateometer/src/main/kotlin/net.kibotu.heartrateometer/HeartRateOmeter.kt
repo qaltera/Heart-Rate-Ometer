@@ -16,8 +16,10 @@ import io.reactivex.Observable
 import io.reactivex.subjects.PublishSubject
 import org.apache.commons.collections4.queue.CircularFifoQueue
 import java.lang.ref.WeakReference
+import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.reflect.KFunction1
+import kotlin.collections.ArrayList
+import kotlin.collections.LinkedHashMap
 
 
 /**
@@ -315,15 +317,16 @@ open class HeartRateOmeter {
             internal var beatsIndex = 0
             internal var beats = 0.0
             internal var startTime = System.currentTimeMillis()
-            internal var averageIndex = 0
 
             internal val PROCESSING = AtomicBoolean(false)
 
-            internal val AVERAGE_ARRAY_SIZE = 4
-            internal val AVERAGE_ARRAY = IntArray(AVERAGE_ARRAY_SIZE)
+            internal val AVERAGE_ARRAY_SIZE = 300
+            internal val averageArray: LinkedList<Int> = LinkedList()
+            internal val derivArray: MutableList<Int> = ArrayList()
+            internal val peaksMap: MutableMap<Int, Int> = LinkedHashMap()
 
-            internal val BEATS_ARRAY_SIZE = 3
-            internal val BEATS_ARRAY = IntArray(BEATS_ARRAY_SIZE)
+//            internal val BEATS_ARRAY_SIZE = 3
+//            internal val BEATS_ARRAY = IntArray(BEATS_ARRAY_SIZE)
 
             internal var currentPixelType: PulseType = PulseType.OFF
 
@@ -362,87 +365,195 @@ open class HeartRateOmeter {
                 }
                 fingerDetected = true
 
-                log("imageAverage: " + imageAverage)
-
-                var averageArrayAverage = 0
-                var averageArrayCount = 0
-
-                for (averageEntry in AVERAGE_ARRAY) {
-                    if (averageEntry > 0) {
-                        averageArrayAverage += averageEntry
-                        averageArrayCount++
-                    }
+//                log("imageAverage: " + imageAverage)
+//
+//                var averageArrayAverage = 0
+//                var averageArrayCount = 0
+//
+//                averageArray.subList(averageArray.size - 4, averageArray.size)
+//                        .map { averageEntry ->
+//                    if (averageEntry > 0) {
+//                        averageArrayAverage += averageEntry
+//                        averageArrayCount++
+//                    }
+//                }
+//
+//                val rollingAverage = if (averageArrayCount > 0) averageArrayAverage / averageArrayCount else 0
+//
+//                log("rollingAverage: " + rollingAverage)
+//
+//                var newType = currentPixelType
+//
+//                if (imageAverage < rollingAverage) {
+//                    newType = PulseType.ON
+//                    if (newType != currentPixelType) {
+//                        beats++
+//                    }
+//                } else if (imageAverage > rollingAverage) {
+//                    newType = PulseType.OFF
+//                }
+//
+                while (averageArray.size >= AVERAGE_ARRAY_SIZE) {
+                    averageArray.removeFirst()
                 }
-
-                val rollingAverage = if (averageArrayCount > 0) averageArrayAverage / averageArrayCount else 0
-
-                log("rollingAverage: " + rollingAverage)
-
-                var newType = currentPixelType
-
-                if (imageAverage < rollingAverage) {
-                    newType = PulseType.ON
-                    if (newType != currentPixelType) {
-                        beats++
-                    }
-                } else if (imageAverage > rollingAverage) {
-                    newType = PulseType.OFF
-                }
-
-                if (averageIndex == AVERAGE_ARRAY_SIZE) {
-                    averageIndex = 0
-                }
-
-                AVERAGE_ARRAY[averageIndex] = imageAverage
-                averageIndex++
-
-                if (newType != currentPixelType) {
-                    currentPixelType = newType
-                    publishSubject.onNext(Bpm(previousBeatsAverage, currentPixelType))
-                }
+                averageArray.add(imageAverage)
+//
+//                if (newType != currentPixelType) {
+//                    currentPixelType = newType
+//                    publishSubject.onNext(Bpm(previousBeatsAverage, currentPixelType))
+//                }
 
                 val endTime = System.currentTimeMillis()
                 val totalTimeInSecs = (endTime - startTime) / 1000.0
                 log("totalTimeInSecs: " + totalTimeInSecs + " >= averageTimer: " + averageTimer)
                 if (totalTimeInSecs >= averageTimer) {
-                    val beatsPerSecond = beats / totalTimeInSecs
-                    val beatsPerMinute = (beatsPerSecond * 60.0).toInt()
-                    if (beatsPerMinute < 30 || beatsPerMinute > 180) {
-                        startTime = System.currentTimeMillis()
-                        beats = 0.0
-                        PROCESSING.set(false)
-                        return
-                    }
+                    // NEW ALGORITHM
 
-                    if (beatsIndex == BEATS_ARRAY_SIZE) {
-                        beatsIndex = 0
-                    }
+                    // STEP 1. CALCULATE ARRAY OF DERIVATIVES
 
-                    BEATS_ARRAY[beatsIndex] = beatsPerMinute
-                    beatsIndex++
-
-                    var beatsArrayAverage = 0
-                    var beatsArrayCount = 0
-
-                    for (beatsEntry in BEATS_ARRAY) {
-                        if (beatsEntry > 0) {
-                            beatsArrayAverage += beatsEntry
-                            beatsArrayCount++
+                    derivArray.clear()
+                    for (i in 0..averageArray.size) {
+                        if (i > 0 && i < averageArray.size -1) {
+                            val value = (averageArray.get(i - 1) + averageArray.get(i + 1)) / 2
+                            derivArray.add(value)
                         }
                     }
 
-                    val beatsAverage = beatsArrayAverage / beatsArrayCount
-                    previousBeatsAverage = beatsAverage
-                    log("beatsAverage: " + beatsAverage)
-                    publishSubject.onNext(Bpm(beatsAverage, currentPixelType))
+                    // STEP 2 CALCULATE PEAKS
+                    val eps = 2//15,30
 
-                    startTime = System.currentTimeMillis()
-                    beats = 0.0
+                    //in peaksMap key is peak value and value is position
+                    peaksMap.clear()
+                    for (i in 0..derivArray.size) {
+                        if (i >= eps && i < derivArray.size - eps) {
+                            val value = derivArray.get(i)
+                            if (value == findMax(derivArray.subList(i-eps,i+1)) &&
+                                    value == findMax(derivArray.subList(i, i + eps))) {
+                                peaksMap.put(value, i)
+                            }
+                        }
+                    }
+
+                    // This map is sorted by peak size
+                    val sortedPeaksMap = peaksMap.toSortedMap(reverseOrder())
+
+                    // GET SETS OF k HIGHEST PEAKS, k from 5 to 20
+                    // CALCULATE DISTANCES BETWEEN PEAKS IN EACH SET
+
+                    val distancesList = ArrayList<ArrayList<Int>>()
+                    for (k in 5..20) {
+                        // Find dispersion of distances between peaks in each set
+                        val distances = ArrayList<Int>()
+                        val iterator = sortedPeaksMap.values.iterator()
+                        var previous: Int = -1
+                        var i = 0
+                        while(iterator.hasNext() && i < k) {
+                            val value = iterator.next()
+                            if (previous != -1) {
+                                distances.add(value - previous)
+                            }
+                            previous = value
+                            i++
+                        }
+                        distancesList.add(distances)
+                    }
+
+                    // CALCULATE DISPERSION FOR EACH SET OF PEAKS
+
+                    val meanList = ArrayList<Int>()
+
+                    val dispersions = distancesList.map { distancesSet ->
+                        if (distancesSet.size == 0) {
+                            Int.MAX_VALUE
+                        } else {
+                            val mean = distancesSet.sum() / distancesSet.size
+                            meanList.add(mean)
+                            distancesSet.map { distance ->
+                                (distance - mean) * (distance - mean)
+                            }.sum() / distancesSet.size
+                        }
+                    }
+
+                    // CHOOSE SET WITH MIN DISPERSION
+
+                    val indexOfMin = dispersions.withIndex()
+                            .minBy { (_, dispersion) -> dispersion }?.index
+
+                    indexOfMin?.also {
+                        //val resultDistanceList = distancesList[indexOfMin]
+                        //val mean = resultDistanceList.sum()/resultDistanceList.size
+                        if (indexOfMin >= 0 && indexOfMin < meanList.size) {
+                            val resultMean = meanList[indexOfMin]
+                            val FRAMES_PER_SECOND = 30
+                            val heartRate = FRAMES_PER_SECOND * 60 / resultMean
+                            previousBeatsAverage = heartRate
+                            Log.d("HeartCheck", "heartRate=$heartRate")
+                            publishSubject.onNext(Bpm(heartRate, PulseType.ON))
+                        }
+                    }
+
+                    // CALCULATE HR
+                    // HR = frame_rate*60/mean
+
+
+
+
+//                    val beatsPerSecond = beats / totalTimeInSecs
+//                    val beatsPerMinute = (beatsPerSecond * 60.0).toInt()
+//                    if (beatsPerMinute < 30 || beatsPerMinute > 180) {
+//                        startTime = System.currentTimeMillis()
+//                        beats = 0.0
+//                        PROCESSING.set(false)
+//                        return
+//                    }
+//
+//                    if (beatsIndex == BEATS_ARRAY_SIZE) {
+//                        beatsIndex = 0
+//                    }
+//
+//                    BEATS_ARRAY[beatsIndex] = beatsPerMinute
+//                    beatsIndex++
+//
+//                    var beatsArrayAverage = 0
+//                    var beatsArrayCount = 0
+//
+//                    for (beatsEntry in BEATS_ARRAY) {
+//                        if (beatsEntry > 0) {
+//                            beatsArrayAverage += beatsEntry
+//                            beatsArrayCount++
+//                        }
+//                    }
+//
+//                    val beatsAverage = beatsArrayAverage / beatsArrayCount
+//                    previousBeatsAverage = beatsAverage
+//                    log("beatsAverage: " + beatsAverage)
+//                    publishSubject.onNext(Bpm(beatsAverage, currentPixelType))
+//
+//                    startTime = System.currentTimeMillis()
+//                    beats = 0.0
                 }
 
                 PROCESSING.set(false)
             }
         }
+    }
+
+    fun findMax(list: List<Int>?): Int? {
+
+        // check list is empty or not
+        if (list == null || list.size == 0) {
+            return Integer.MIN_VALUE
+        }
+
+        // create a new list to avoid modification
+        // in the original list
+        val sortedlist = ArrayList(list)
+
+        // sort list in natural order
+        Collections.sort(sortedlist)
+
+        // last element in the sorted list would be maximum
+        return sortedlist[sortedlist.size - 1]
     }
 
     /**
