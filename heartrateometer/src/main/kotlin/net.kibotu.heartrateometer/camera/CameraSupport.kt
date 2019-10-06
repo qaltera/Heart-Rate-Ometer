@@ -9,6 +9,10 @@ abstract class CameraSupport {
 
     abstract fun open(cameraId: Int): CameraSupport
 
+    abstract fun addCallbackBuffer(ba: ByteArray)
+
+    abstract fun addBuffers()
+
     /**
      * [Camera.CameraInfo.html#orientation](https://developer.android.com/reference/android/hardware/Camera.CameraInfo.html#orientation)
      *

@@ -1,7 +1,15 @@
 package de.charite.balsam.utils.camera
 
 import android.hardware.Camera
+import android.os.Handler
 import android.view.SurfaceHolder
+import android.os.HandlerThread
+import kotlinx.coroutines.*
+import java.lang.Runnable
+import java.util.concurrent.locks.ReentrantLock
+import android.graphics.ImageFormat
+import android.util.Log
+
 
 class CameraPreLolipop : CameraSupport() {
 
@@ -14,8 +22,18 @@ class CameraPreLolipop : CameraSupport() {
         }
 
     override fun open(cameraId: Int): CameraSupport {
-        this.camera = Camera.open(cameraId)
+        runBlocking {
+            withContext(newSingleThreadContext("camera_thread")) {
+                openCamera(cameraId)
+            }
+        }
         return this
+    }
+
+    private fun addBuffer(size: Int) {
+        val frameBuffer = ByteArray(size)
+        Log.d("HeartCheck", "Adding buffers of size $size")
+        camera?.addCallbackBuffer(frameBuffer)
     }
 
     override fun getOrientation(cameraId: Int): @CameraOrientation Int {
@@ -32,8 +50,37 @@ class CameraPreLolipop : CameraSupport() {
         camera?.setPreviewDisplay(holder)
     }
 
+    override fun addCallbackBuffer(ba: ByteArray) {
+        camera?.addCallbackBuffer(ba)
+    }
+
     override fun setPreviewCallback(previewCallback: Camera.PreviewCallback?) {
-        camera?.setPreviewCallback(previewCallback)
+        if (previewCallback != null) {
+            Log.d("HeartCheck", "setPreviewCallback")
+
+            camera?.setPreviewCallbackWithBuffer(previewCallback)
+        }
+//        camera?.setPreviewCallback(previewCallback)
+    }
+
+    override fun addBuffers() {
+        val size = bufferSize()
+        if (size > 0) {
+            for (i in 0..10) {
+                addBuffer(size)
+            }
+        }
+    }
+
+    fun bufferSize(): Int {
+        val parameters = parameters
+        return parameters?.let {
+            val previewFormat = parameters.getPreviewFormat()
+            val bitsperpixel = ImageFormat.getBitsPerPixel(previewFormat)
+            val byteperpixel = bitsperpixel / 8F
+            val camerasize = parameters.getPreviewSize()
+            camerasize.width * camerasize.height * byteperpixel
+        }?.toInt() ?: 0
     }
 
     override fun startPreview() {
@@ -82,5 +129,9 @@ class CameraPreLolipop : CameraSupport() {
         }
         parameters = parameters
         return true
+    }
+
+    private fun openCamera(cameraId: Int) {
+        this.camera = Camera.open(cameraId)
     }
 }

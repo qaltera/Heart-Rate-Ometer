@@ -13,6 +13,13 @@ import android.view.SurfaceHolder
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 class CameraPostLolipop internal constructor(context: Context) : CameraSupport() {
+    override fun addBuffers() {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
+    override fun addCallbackBuffer(ba: ByteArray) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
 
     private var camera: CameraDevice? = null
 
