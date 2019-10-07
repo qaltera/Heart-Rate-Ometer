@@ -335,7 +335,7 @@ open class HeartRateOmeter {
             internal val AVERAGE_ARRAY_SIZE = 300
             internal val averageArray: LinkedList<Int> = LinkedList()
             internal val derivArray: MutableList<Int> = ArrayList()
-            internal val peaksMap: MutableMap<Int, Int> = LinkedHashMap()
+            internal val peaks: MutableList<Pair<Int, Int>> = ArrayList<Pair<Int, Int>>()
 
             var framesCount: Int = 0
             var timeAtLastFramePortionStart: Long = 0L
@@ -438,22 +438,35 @@ open class HeartRateOmeter {
                                     }
 
                                     // STEP 2 CALCULATE PEAKS
-                                    val eps = 1//15,30
+                                    val eps = 7//15,30
 
                                     //in peaksMap key is peak value and value is position
-                                    peaksMap.clear()
+                                    peaks.clear()
+                                    val chartPeaks = ArrayList<Int>()
                                     for (i in 0..derivArray.size) {
                                         if (i >= eps && i < derivArray.size - eps) {
                                             val value = derivArray.get(i)
                                             if (value == findMax(derivArray.subList(i - eps, i + 1)) &&
                                                     value == findMax(derivArray.subList(i, i + eps + 1))) {
-                                                peaksMap.put(value, i)
+                                                peaks.add(i to value)
+                                                chartPeaks.add(i)
                                             }
                                         }
                                     }
 
+//                                    val peaksChartData = chartPeaks.map {
+//                                        it.toFloat() to averageArray[it].toFloat()
+//                                    }
+//
+//                                    peakDataSubject.onNext(peaksChartData)
+
+                                    Log.d("PeakCheck", "peaksMap size=${peaks.size}" +
+                                            "chartPeaks size = ${chartPeaks.size}")
+
+
+
                                     // This map is sorted by peak size
-                                    val sortedPeaksMap = peaksMap.toSortedMap(reverseOrder())
+                                    val sortedPeaks = peaks.sortedByDescending { it.second }
 
                                     // GET SETS OF k HIGHEST PEAKS, k from 5 to 20
                                     // CALCULATE DISTANCES BETWEEN PEAKS IN EACH SET
@@ -462,15 +475,15 @@ open class HeartRateOmeter {
                                     for (k in 5..20) {
                                         // Find dispersion of distances between peaks in each set
                                         val distances = ArrayList<Int>()
-                                        val iterator = sortedPeaksMap.values.iterator()
+                                        val iterator = sortedPeaks.iterator()
                                         var previous: Int = -1
                                         var i = 0
                                         while (iterator.hasNext() && i < k) {
                                             val value = iterator.next()
                                             if (previous != -1) {
-                                                distances.add(Math.abs(value - previous))
+                                                distances.add(Math.abs(value.first - previous))
                                             }
-                                            previous = value
+                                            previous = value.first
                                             i++
                                         }
                                         distancesList.add(distances)
@@ -500,17 +513,23 @@ open class HeartRateOmeter {
                                     indexOfMin?.also {
                                         val resultDistanceList = distancesList[indexOfMin]
                                         // key - peak value - distance
-                                        if (distancesList.size > 0 && sortedPeaksMap.size > 2) {
-                                            val itt = sortedPeaksMap.iterator()
+                                        if (distancesList.size > 0 && sortedPeaks.size > 2) {
+                                            val itt = sortedPeaks.iterator()
                                             val resultPeaksList = ArrayList<Int>()
                                             while (itt.hasNext() && resultPeaksList.size <
                                                     resultDistanceList.size + 1) {
                                                 val item = itt.next()
-                                                resultPeaksList.add(item.value)
+                                                resultPeaksList.add(item.first)
                                             }
 
                                             // these are x-values, sort by x
                                             val sortedResultPeaksList = resultPeaksList.sorted()
+
+                                            val peaksChartData = sortedResultPeaksList.map {
+                                                it.toFloat() to averageArray[it].toFloat()
+                                            }
+
+                                            peakDataSubject.onNext(peaksChartData)
 
                                             val resultPeaksList2 = ArrayList<Int>()
                                             val resultPeaksList3 = ArrayList<Int>()
@@ -558,11 +577,11 @@ open class HeartRateOmeter {
                                                     }
                                                 }
 
-                                                val peaksChartData = resultPeaksList3.map {
-                                                    it.toFloat() to averageArray[it].toFloat()
-                                                }
-
-                                                peakDataSubject.onNext(peaksChartData)
+//                                                val peaksChartData = resultPeaksList3.map {
+//                                                    it.toFloat() to averageArray[it].toFloat()
+//                                                }
+//
+//                                                peakDataSubject.onNext(peaksChartData)
 
                                                 var acc2 = 0
                                                 for (i in 1 until resultPeaksList3.size) {
@@ -577,7 +596,7 @@ open class HeartRateOmeter {
                                                     val heartRate = FRAMES_PER_SECOND * 60 / mean
                                                     previousBeatsAverage = heartRate
                                                     Log.d("HeartCheck", "heartRate=$heartRate" +
-                                                            " index=$indexOfMin mean=$mean peaks=${peaksMap.size}")
+                                                            " index=$indexOfMin mean=$mean peaks=${peaks.size}")
                                                     publishSubject.onNext(Bpm(heartRate, PulseType.ON))
                                                 }
                                             }

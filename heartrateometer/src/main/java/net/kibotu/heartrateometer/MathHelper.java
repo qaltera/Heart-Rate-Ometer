@@ -75,7 +75,7 @@ public class MathHelper {
 
         int sum = decodeYUV420SPtoRedSum(yuv420sp, width, height);
 
-        return (sum / frameSize);
+        return (sum / width); //frameSize
     }
 
     //^^^^^^^^^^^^ image processing ^^^^^^^^^^^^

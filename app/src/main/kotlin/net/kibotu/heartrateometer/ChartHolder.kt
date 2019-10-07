@@ -68,8 +68,8 @@ class ChartHolder(private val chart: LineChart) {
             yAxis.enableGridDashedLine(10f, 10f, 0f)
 
             // axis range
-            yAxis.axisMinimum = 230f
-            yAxis.axisMaximum = 250f
+            yAxis.axisMinimum = 33000F///230f
+            yAxis.axisMaximum = 37000F///250f
         }
 
 
