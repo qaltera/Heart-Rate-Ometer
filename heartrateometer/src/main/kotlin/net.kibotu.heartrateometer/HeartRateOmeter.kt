@@ -5,6 +5,7 @@ import android.graphics.Point
 import android.hardware.Camera
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.SurfaceHolder
@@ -15,10 +16,7 @@ import de.charite.balsam.utils.camera.CameraSupport
 import io.reactivex.Observable
 import io.reactivex.schedulers.Schedulers
 import io.reactivex.subjects.PublishSubject
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.apache.commons.collections4.queue.CircularFifoQueue
 import java.lang.ref.WeakReference
 import java.util.*
@@ -53,6 +51,12 @@ open class HeartRateOmeter {
     protected lateinit var surfaceCallback: SurfaceHolder.Callback
 
     protected val publishSubject: PublishSubject<Bpm>
+
+    public val chartDataSubject: PublishSubject<List<Pair<Float, Float>>>
+            = PublishSubject.create()
+
+    public val peakDataSubject: PublishSubject<List<Pair<Float, Float>>>
+            = PublishSubject.create()
 
     protected var context: WeakReference<Context>? = null
 
@@ -333,6 +337,9 @@ open class HeartRateOmeter {
             internal val derivArray: MutableList<Int> = ArrayList()
             internal val peaksMap: MutableMap<Int, Int> = LinkedHashMap()
 
+            var framesCount: Int = 0
+            var timeAtLastFramePortionStart: Long = 0L
+
             var buffer: ByteArray? = null
 
 //            internal val BEATS_ARRAY_SIZE = 3
@@ -360,11 +367,23 @@ open class HeartRateOmeter {
                     data.copyInto(buf)
                 }
 
+                if (timeAtLastFramePortionStart == 0L) {
+                    timeAtLastFramePortionStart = SystemClock.elapsedRealtime()
+                }
+
+                framesCount++
+                if (framesCount == 30) {
+                    val now = SystemClock.elapsedRealtime()
+                    Log.d("TimeCheck", "received 30 frames in ${now - timeAtLastFramePortionStart} ms")
+                    timeAtLastFramePortionStart = now
+                    framesCount = 0
+                }
+
                 cameraSupport?.addCallbackBuffer(data)
 
 
 
-                GlobalScope.launch {
+                runBlocking {
                     withContext(Dispatchers.Default) {
 
 
@@ -390,43 +409,17 @@ open class HeartRateOmeter {
                             } else {
                                 fingerDetected = true
 
-//                log("imageAverage: " + imageAverage)
-//
-//                var averageArrayAverage = 0
-//                var averageArrayCount = 0
-//
-//                averageArray.subList(averageArray.size - 4, averageArray.size)
-//                        .map { averageEntry ->
-//                    if (averageEntry > 0) {
-//                        averageArrayAverage += averageEntry
-//                        averageArrayCount++
-//                    }
-//                }
-//
-//                val rollingAverage = if (averageArrayCount > 0) averageArrayAverage / averageArrayCount else 0
-//
-//                log("rollingAverage: " + rollingAverage)
-//
-//                var newType = currentPixelType
-//
-//                if (imageAverage < rollingAverage) {
-//                    newType = PulseType.ON
-//                    if (newType != currentPixelType) {
-//                        beats++
-//                    }
-//                } else if (imageAverage > rollingAverage) {
-//                    newType = PulseType.OFF
-//                }
-//
                                 while (averageArray.size >= AVERAGE_ARRAY_SIZE) {
                                     averageArray.removeFirst()
                                 }
                                 averageArray.add(imageAverage)
-//
-//                if (newType != currentPixelType) {
-//                    currentPixelType = newType
-//                    publishSubject.onNext(Bpm(previousBeatsAverage, currentPixelType))
-//                }
+
+                                val chartData = ArrayList<Pair<Float,Float>>()
+                                for (i in 0 until averageArray.size) {
+                                    chartData.add(i.toFloat() to averageArray[i].toFloat())
+                                }
+
+                                chartDataSubject.onNext(chartData)
 
                                 val endTime = System.currentTimeMillis()
                                 val totalTimeInSecs = (endTime - startTime) / 1000.0
@@ -515,18 +508,19 @@ open class HeartRateOmeter {
                                                 val item = itt.next()
                                                 resultPeaksList.add(item.value)
                                             }
-//                                            val resultPeaksSet = sortedPeaksMap.subMap(0,
-//                                                    resultDistanceList.size + 1)
-//                                            val resultPeaksList = resultPeaksSet.values.toList()
+
+                                            // these are x-values, sort by x
+                                            val sortedResultPeaksList = resultPeaksList.sorted()
+
                                             val resultPeaksList2 = ArrayList<Int>()
                                             val resultPeaksList3 = ArrayList<Int>()
 
                                             val minDistance = 30 * 60 / 200
-                                            for (k in 0 until resultPeaksList.size) {
-                                                val item = resultPeaksList[k]
-                                                val prev = if (k == 0) null else resultPeaksList[k - 1]
-                                                val next = if (k == resultPeaksList.size - 1) 0 else
-                                                    resultPeaksList[k + 1]
+                                            for (k in 0 until sortedResultPeaksList.size) {
+                                                val item = sortedResultPeaksList[k]
+                                                val prev = if (k == 0) null else sortedResultPeaksList[k - 1]
+                                                val next = if (k == sortedResultPeaksList.size - 1) 0 else
+                                                    sortedResultPeaksList[k + 1]
                                                 val excludeByPrev = if (prev == null) false else {
                                                     Math.abs(item - prev) < minDistance
                                                 }
@@ -564,6 +558,12 @@ open class HeartRateOmeter {
                                                     }
                                                 }
 
+                                                val peaksChartData = resultPeaksList3.map {
+                                                    it.toFloat() to averageArray[it].toFloat()
+                                                }
+
+                                                peakDataSubject.onNext(peaksChartData)
+
                                                 var acc2 = 0
                                                 for (i in 1 until resultPeaksList3.size) {
                                                     acc2 += Math.abs(resultPeaksList3[i] - resultPeaksList3[i - 1])
@@ -572,42 +572,7 @@ open class HeartRateOmeter {
                                                     val mean = acc2 / (resultPeaksList3.size - 1)
 
 
-//                                        val resultPeaksSet2 = LinkedHashMap<Int, Int>()
-//                                        resultPeaksSet.entries.map {
-//                                            if (it.value < 60*30/200) {
-//                                                resultPeaksSet2.put(it.key, it.value)
-//                                            }
-//                                        }
-//
-//                                        // Here keys are points and values are peak values
-//                                        val resultPeaksSet3 = TreeMap<Int, Int>()
-//                                        resultPeaksSet2.entries.map {
-//                                            resultPeaksSet3.put(it.value, it.key)
-//                                        }
-//
-//                                        val iterator = resultPeaksSet3.entries.iterator()
-//                                        var prevEntry: Map.Entry<Int,Int>? = null
-//                                        var prevPrevEntry: Map.Entry<Int,Int>? = null
-//
-//
-//
-//                                        while(iterator.hasNext()) {
-//                                            val item = iterator.next()
-//                                            if (prevEntry != null && prevPrevEntry != null) {
-//                                                if (prevEntry.key - prevPrevEntry.key < )
-//                                            }
-//
-//                                            prevPrevEntry = prevEntry
-//                                            prevEntry = item
-//                                        }
 
-//                                        val mean =  if (resultDistanceList.size != 0) {
-//                                            resultDistanceList.sum() / resultDistanceList.size
-//                                        } else {
-//                                            0
-//                                        }
-                                                    //if (indexOfMin >= 0 && indexOfMin < meanList.size) {
-                                                    //val resultMean = meanList[indexOfMin]
                                                     val FRAMES_PER_SECOND = 30
                                                     val heartRate = FRAMES_PER_SECOND * 60 / mean
                                                     previousBeatsAverage = heartRate
@@ -617,51 +582,10 @@ open class HeartRateOmeter {
                                                 }
                                             }
                                         }
-                                        //}
                                     }
-
-                                    // CALCULATE HR
-                                    // HR = frame_rate*60/mean
-
-
-//                    val beatsPerSecond = beats / totalTimeInSecs
-//                    val beatsPerMinute = (beatsPerSecond * 60.0).toInt()
-//                    if (beatsPerMinute < 30 || beatsPerMinute > 180) {
-//                        startTime = System.currentTimeMillis()
-//                        beats = 0.0
-//                        PROCESSING.set(false)
-//                        return
-//                    }
-//
-//                    if (beatsIndex == BEATS_ARRAY_SIZE) {
-//                        beatsIndex = 0
-//                    }
-//
-//                    BEATS_ARRAY[beatsIndex] = beatsPerMinute
-//                    beatsIndex++
-//
-//                    var beatsArrayAverage = 0
-//                    var beatsArrayCount = 0
-//
-//                    for (beatsEntry in BEATS_ARRAY) {
-//                        if (beatsEntry > 0) {
-//                            beatsArrayAverage += beatsEntry
-//                            beatsArrayCount++
-//                        }
-//                    }
-//
-//                    val beatsAverage = beatsArrayAverage / beatsArrayCount
-//                    previousBeatsAverage = beatsAverage
-//                    log("beatsAverage: " + beatsAverage)
-//                    publishSubject.onNext(Bpm(beatsAverage, currentPixelType))
-//
-//                    startTime = System.currentTimeMillis()
-//                    beats = 0.0
                                 }
 
                                 PROCESSING.set(false)
-
-
                             }
                         }
                     }

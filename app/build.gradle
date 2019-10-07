@@ -75,5 +75,6 @@ dependencies {
     compile project(path: ':heartrateometer')
     implementation "com.squareup.retrofit2:retrofit:$retrofit_version"
     implementation "com.squareup.retrofit2:adapter-rxjava2:$retrofit_version"
+    implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
     implementation ('com.github.kibotu:KalmanRx:1.2.1') { transitive = true }
 }

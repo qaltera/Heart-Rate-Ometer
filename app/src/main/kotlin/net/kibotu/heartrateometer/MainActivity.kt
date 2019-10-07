@@ -18,9 +18,14 @@ class MainActivity : AppCompatActivity() {
 
     var subscription: CompositeDisposable? = null
 
+    val heartrateometer = HeartRateOmeter()
+
+    var chartHolder: ChartHolder? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        chartHolder = ChartHolder(chart)
 
     }
 
@@ -42,8 +47,17 @@ class MainActivity : AppCompatActivity() {
         // 1s somewhere?
         kalman.error_cov_post = kalman.error_cov_post.identity()
 
+        val chartUpdates = heartrateometer.chartDataSubject.subscribe({
+            chartHolder?.setData(it)
+        }, Throwable::printStackTrace)
 
-        val bpmUpdates = HeartRateOmeter()
+        val peakUpdates = heartrateometer.peakDataSubject.subscribe({
+            chartHolder?.setPeakData(it)
+        }, Throwable::printStackTrace)
+
+
+
+        val bpmUpdates = heartrateometer
                 .withAverageAfterSeconds(3)
                 .setFingerDetectionListener(this::onFingerChange)
                 .bpmUpdates(preview)
@@ -66,6 +80,8 @@ class MainActivity : AppCompatActivity() {
                 }, Throwable::printStackTrace)
 
         subscription?.add(bpmUpdates)
+        subscription?.add(chartUpdates)
+        subscription?.add(peakUpdates)
     }
 
     @SuppressLint("SetTextI18n")
