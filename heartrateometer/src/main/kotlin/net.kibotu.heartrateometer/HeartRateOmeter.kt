@@ -506,19 +506,117 @@ open class HeartRateOmeter {
 
                                     indexOfMin?.also {
                                         val resultDistanceList = distancesList[indexOfMin]
-                                        val mean =  if (resultDistanceList.size != 0) {
-                                            resultDistanceList.sum() / resultDistanceList.size
-                                        } else {
-                                            0
+                                        // key - peak value - distance
+                                        if (distancesList.size > 0 && sortedPeaksMap.size > 2) {
+                                            val itt = sortedPeaksMap.iterator()
+                                            val resultPeaksList = ArrayList<Int>()
+                                            while (itt.hasNext() && resultPeaksList.size <
+                                                    resultDistanceList.size + 1) {
+                                                val item = itt.next()
+                                                resultPeaksList.add(item.value)
+                                            }
+//                                            val resultPeaksSet = sortedPeaksMap.subMap(0,
+//                                                    resultDistanceList.size + 1)
+//                                            val resultPeaksList = resultPeaksSet.values.toList()
+                                            val resultPeaksList2 = ArrayList<Int>()
+                                            val resultPeaksList3 = ArrayList<Int>()
+
+                                            val minDistance = 30 * 60 / 200
+                                            for (k in 0 until resultPeaksList.size) {
+                                                val item = resultPeaksList[k]
+                                                val prev = if (k == 0) null else resultPeaksList[k - 1]
+                                                val next = if (k == resultPeaksList.size - 1) 0 else
+                                                    resultPeaksList[k + 1]
+                                                val excludeByPrev = if (prev == null) false else {
+                                                    Math.abs(item - prev) < minDistance
+                                                }
+                                                val excludeByNext = if (next == null) false else {
+                                                    Math.abs(item - next) < minDistance
+                                                }
+                                                if (!excludeByPrev && !excludeByNext) {
+                                                    resultPeaksList2.add(item)
+                                                }
+                                            }
+
+                                            if (resultPeaksList2.size >= 2) {
+
+                                                var acc = 0
+                                                for (i in 1 until resultPeaksList2.size) {
+                                                    acc += Math.abs(resultPeaksList2[i] - resultPeaksList2[i - 1])
+                                                }
+                                                val meanDistance2 = acc / (resultPeaksList2.size - 1)
+
+                                                for (k in 0 until resultPeaksList2.size) {
+                                                    val item = resultPeaksList2[k]
+                                                    val prev = if (k == 0) null else resultPeaksList2[k - 1]
+                                                    val next = if (k == resultPeaksList2.size - 1) 0 else
+                                                        resultPeaksList2[k + 1]
+                                                    val excludeByPrev = if (prev == null) false else {
+                                                        val dist = Math.abs(item - prev)
+                                                        (dist - meanDistance2) * 100 / dist > 25
+                                                    }
+                                                    val excludeByNext = if (next == null) false else {
+                                                        val dist = Math.abs(item - next)
+                                                        (dist - meanDistance2) * 100 / dist > 25
+                                                    }
+                                                    if (!excludeByPrev && !excludeByNext) {
+                                                        resultPeaksList3.add(item)
+                                                    }
+                                                }
+
+                                                var acc2 = 0
+                                                for (i in 1 until resultPeaksList3.size) {
+                                                    acc2 += Math.abs(resultPeaksList3[i] - resultPeaksList3[i - 1])
+                                                }
+                                                if (resultPeaksList3.size >= 2) {
+                                                    val mean = acc2 / (resultPeaksList3.size - 1)
+
+
+//                                        val resultPeaksSet2 = LinkedHashMap<Int, Int>()
+//                                        resultPeaksSet.entries.map {
+//                                            if (it.value < 60*30/200) {
+//                                                resultPeaksSet2.put(it.key, it.value)
+//                                            }
+//                                        }
+//
+//                                        // Here keys are points and values are peak values
+//                                        val resultPeaksSet3 = TreeMap<Int, Int>()
+//                                        resultPeaksSet2.entries.map {
+//                                            resultPeaksSet3.put(it.value, it.key)
+//                                        }
+//
+//                                        val iterator = resultPeaksSet3.entries.iterator()
+//                                        var prevEntry: Map.Entry<Int,Int>? = null
+//                                        var prevPrevEntry: Map.Entry<Int,Int>? = null
+//
+//
+//
+//                                        while(iterator.hasNext()) {
+//                                            val item = iterator.next()
+//                                            if (prevEntry != null && prevPrevEntry != null) {
+//                                                if (prevEntry.key - prevPrevEntry.key < )
+//                                            }
+//
+//                                            prevPrevEntry = prevEntry
+//                                            prevEntry = item
+//                                        }
+
+//                                        val mean =  if (resultDistanceList.size != 0) {
+//                                            resultDistanceList.sum() / resultDistanceList.size
+//                                        } else {
+//                                            0
+//                                        }
+                                                    //if (indexOfMin >= 0 && indexOfMin < meanList.size) {
+                                                    //val resultMean = meanList[indexOfMin]
+                                                    val FRAMES_PER_SECOND = 30
+                                                    val heartRate = FRAMES_PER_SECOND * 60 / mean
+                                                    previousBeatsAverage = heartRate
+                                                    Log.d("HeartCheck", "heartRate=$heartRate" +
+                                                            " index=$indexOfMin mean=$mean peaks=${peaksMap.size}")
+                                                    publishSubject.onNext(Bpm(heartRate, PulseType.ON))
+                                                }
+                                            }
                                         }
-                                        //if (indexOfMin >= 0 && indexOfMin < meanList.size) {
-                                        //val resultMean = meanList[indexOfMin]
-                                        val FRAMES_PER_SECOND = 30
-                                        val heartRate = FRAMES_PER_SECOND * 60 / mean
-                                        previousBeatsAverage = heartRate
-                                        Log.d("HeartCheck", "heartRate=$heartRate" +
-                                                " index=$indexOfMin mean=$mean peaks=${peaksMap.size}")
-                                        publishSubject.onNext(Bpm(heartRate, PulseType.ON))
                                         //}
                                     }
 
