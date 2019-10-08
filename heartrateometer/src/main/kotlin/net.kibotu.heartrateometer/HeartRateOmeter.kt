@@ -14,7 +14,6 @@ import android.view.WindowManager
 import de.charite.balsam.utils.camera.CameraModule
 import de.charite.balsam.utils.camera.CameraSupport
 import io.reactivex.Observable
-import io.reactivex.schedulers.Schedulers
 import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.*
 import org.apache.commons.collections4.queue.CircularFifoQueue
@@ -22,7 +21,6 @@ import java.lang.ref.WeakReference
 import java.util.*
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.ArrayList
-import kotlin.collections.LinkedHashMap
 
 
 /**
@@ -454,16 +452,8 @@ open class HeartRateOmeter {
                                         }
                                     }
 
-//                                    val peaksChartData = chartPeaks.map {
-//                                        it.toFloat() to averageArray[it].toFloat()
-//                                    }
-//
-//                                    peakDataSubject.onNext(peaksChartData)
-
                                     Log.d("PeakCheck", "peaksMap size=${peaks.size}" +
                                             "chartPeaks size = ${chartPeaks.size}")
-
-
 
                                     // This map is sorted by peak size
                                     val sortedPeaks = peaks.sortedByDescending { it.second }
@@ -514,96 +504,25 @@ open class HeartRateOmeter {
                                         val resultDistanceList = distancesList[indexOfMin]
                                         // key - peak value - distance
                                         if (distancesList.size > 0 && sortedPeaks.size > 2) {
-                                            val itt = sortedPeaks.iterator()
-                                            val resultPeaksList = ArrayList<Int>()
-                                            while (itt.hasNext() && resultPeaksList.size <
-                                                    resultDistanceList.size + 1) {
-                                                val item = itt.next()
-                                                resultPeaksList.add(item.first)
-                                            }
+
+                                            val resultPeaksList = getResultPeaks(sortedPeaks,
+                                                    resultDistanceList.size)
 
                                             // these are x-values, sort by x
                                             val sortedResultPeaksList = resultPeaksList.sorted()
 
-
-
-                                            val resultPeaksList2 = ArrayList<Int>()
-                                            val resultPeaksList3 = ArrayList<Int>()
-
-                                            val minDistance = 30 * 60 / 200
-                                            for (k in 0 until sortedResultPeaksList.size) {
-                                                val item = sortedResultPeaksList[k]
-                                                val prev = if (k == 0) null else sortedResultPeaksList[k - 1]
-                                                val next = if (k == sortedResultPeaksList.size - 1) 0 else
-                                                    sortedResultPeaksList[k + 1]
-                                                val excludeByPrev = if (prev == null) false else {
-                                                    Math.abs(item - prev) < minDistance
-                                                }
-                                                val excludeByNext = if (next == null) false else {
-                                                    Math.abs(item - next) < minDistance
-                                                }
-                                                if (!excludeByPrev && !excludeByNext) {
-                                                    resultPeaksList2.add(item)
-                                                }
-                                            }
+                                            val resultPeaksList2 =
+                                                    excludeIfDistanceLessThanMin(sortedResultPeaksList)
 
                                             if (resultPeaksList2.size >= 2) {
+                                                val resultPeaksList3 = removePeaksWithDistancesFarFromMean(resultPeaksList2)
+                                                if (resultPeaksList3.size >= 2) {
+                                                    val resultDistances = distancesFromPeaks(resultPeaksList3)
+                                                    val resultDistances2 = removeDistancesFarFromMean(resultDistances)
+                                                    if (resultDistances2.size > 0) {
+                                                        val mean = resultDistances2.sum() / resultDistances2.size
 
-                                                var acc = 0
-                                                for (i in 1 until resultPeaksList2.size) {
-                                                    acc += Math.abs(resultPeaksList2[i] - resultPeaksList2[i - 1])
-                                                }
-                                                val meanDistance2 = acc / (resultPeaksList2.size - 1)
-
-                                                for (k in 0 until resultPeaksList2.size) {
-                                                    val item = resultPeaksList2[k]
-                                                    val prev = if (k == 0) null else resultPeaksList2[k - 1]
-                                                    val next = if (k == resultPeaksList2.size - 1) 0 else
-                                                        resultPeaksList2[k + 1]
-                                                    val excludeByPrev = if (prev == null) false else {
-                                                        val dist = Math.abs(item - prev)
-                                                        (dist - meanDistance2) * 100 / dist > 25
-                                                    }
-                                                    val excludeByNext = if (next == null) false else {
-                                                        val dist = Math.abs(item - next)
-                                                        (dist - meanDistance2) * 100 / dist > 25
-                                                    }
-                                                    if (!excludeByPrev && !excludeByNext) {
-                                                        resultPeaksList3.add(item)
-                                                    }
-                                                }
-
-//                                                val peaksChartData = resultPeaksList3.map {
-//                                                    it.toFloat() to averageArray[it].toFloat()
-//                                                }
-//
-//                                                peakDataSubject.onNext(peaksChartData)
-
-
-                                                val resultDistances = ArrayList<Int>()
-                                                for (i in 1 until resultPeaksList3.size) {
-                                                    resultDistances.add(Math.abs(resultPeaksList3[i] - resultPeaksList3[i - 1]))
-                                                }
-
-                                                if (resultPeaksList3.size >= 2 && resultDistances.size > 0) {
-                                                    val distMean = resultDistances.sum() / resultDistances.size
-                                                    val distIt = resultDistances.iterator()
-                                                    while(distIt.hasNext()) {
-                                                        val dst = distIt.next()
-                                                        if (Math.abs(dst - distMean) > 25*dst/100) {
-                                                            Log.d("Msf", "Remove too uneven distance dst=$dst mean=$distMean")
-                                                            distIt.remove()
-                                                        }
-                                                    }
-                                                    if (resultDistances.size > 0) {
-                                                        val mean = resultDistances.sum() / resultDistances.size
-
-                                                        val peaksChartData = resultPeaksList3.map {
-                                                            it.toFloat() to averageArray[it].toFloat()
-                                                        }
-
-                                                        peakDataSubject.onNext(peaksChartData)
-
+                                                        sendPeakData(resultPeaksList3, averageArray)
 
                                                         val FRAMES_PER_SECOND = 30
                                                         val heartRate = FRAMES_PER_SECOND * 60 / mean
@@ -626,6 +545,97 @@ open class HeartRateOmeter {
                 }
             }
         }
+    }
+
+    private fun getResultPeaks(peaks: List<Pair<Int, Int>>, distancesSize: Int)
+            : ArrayList<Int> {
+        val iterator = peaks.iterator()
+        val resultPeaksList = ArrayList<Int>()
+        while (iterator.hasNext() && resultPeaksList.size <
+                distancesSize + 1) {
+            val item = iterator.next()
+            resultPeaksList.add(item.first)
+        }
+        return resultPeaksList
+    }
+
+    private fun distancesFromPeaks(list: List<Int>): ArrayList<Int> {
+        val resultDistances = ArrayList<Int>()
+        for (i in 1 until list.size) {
+            resultDistances.add(Math.abs(list[i] - list[i - 1]))
+        }
+        return resultDistances
+    }
+
+    private fun sendPeakData(list: List<Int>, averageArray: LinkedList<Int>) {
+        val peaksChartData = list.map {
+            it.toFloat() to averageArray[it].toFloat()
+        }
+
+        peakDataSubject.onNext(peaksChartData)
+    }
+
+    private fun excludeIfDistanceLessThanMin(list: List<Int>): List<Int> {
+        val result = ArrayList<Int>()
+
+        val minDistance = 30 * 60 / 200
+        for (k in 0 until list.size) {
+            val item = list[k]
+            val prev = if (k == 0) null else list[k - 1]
+            val next = if (k == list.size - 1) 0 else
+                list[k + 1]
+            val excludeByPrev = if (prev == null) false else {
+                Math.abs(item - prev) < minDistance
+            }
+            val excludeByNext = if (next == null) false else {
+                Math.abs(item - next) < minDistance
+            }
+            if (!excludeByPrev && !excludeByNext) {
+                result.add(item)
+            }
+        }
+        return result
+    }
+
+    private fun removePeaksWithDistancesFarFromMean(list: List<Int>): List<Int> {
+        val resultList = ArrayList<Int>()
+        var acc = 0
+        for (i in 1 until list.size) {
+            acc += Math.abs(list[i] - list[i - 1])
+        }
+        val meanDistance2 = acc / (list.size - 1)
+
+        for (k in 0 until list.size) {
+            val item = list[k]
+            val prev = if (k == 0) null else list[k - 1]
+            val next = if (k == list.size - 1) 0 else
+                list[k + 1]
+            val excludeByPrev = if (prev == null) false else {
+                val dist = Math.abs(item - prev)
+                (dist - meanDistance2) * 100 / dist > 25
+            }
+            val excludeByNext = if (next == null) false else {
+                val dist = Math.abs(item - next)
+                (dist - meanDistance2) * 100 / dist > 25
+            }
+            if (!excludeByPrev && !excludeByNext) {
+                resultList.add(item)
+            }
+        }
+        return resultList
+    }
+
+    private fun removeDistancesFarFromMean(resultDistances: MutableList<Int>): List<Int> {
+        val distMean = resultDistances.sum() / resultDistances.size
+        val distIt = resultDistances.iterator()
+        while(distIt.hasNext()) {
+            val dst = distIt.next()
+            if (Math.abs(dst - distMean) > 25*dst/100) {
+                Log.d("Msf", "Remove too uneven distance dst=$dst mean=$distMean")
+                distIt.remove()
+            }
+        }
+        return resultDistances
     }
 
     fun findMax(list: List<Int>?): Int? {
