@@ -525,11 +525,7 @@ open class HeartRateOmeter {
                                             // these are x-values, sort by x
                                             val sortedResultPeaksList = resultPeaksList.sorted()
 
-                                            val peaksChartData = sortedResultPeaksList.map {
-                                                it.toFloat() to averageArray[it].toFloat()
-                                            }
 
-                                            peakDataSubject.onNext(peaksChartData)
 
                                             val resultPeaksList2 = ArrayList<Int>()
                                             val resultPeaksList3 = ArrayList<Int>()
@@ -583,21 +579,39 @@ open class HeartRateOmeter {
 //
 //                                                peakDataSubject.onNext(peaksChartData)
 
-                                                var acc2 = 0
+
+                                                val resultDistances = ArrayList<Int>()
                                                 for (i in 1 until resultPeaksList3.size) {
-                                                    acc2 += Math.abs(resultPeaksList3[i] - resultPeaksList3[i - 1])
+                                                    resultDistances.add(Math.abs(resultPeaksList3[i] - resultPeaksList3[i - 1]))
                                                 }
-                                                if (resultPeaksList3.size >= 2) {
-                                                    val mean = acc2 / (resultPeaksList3.size - 1)
+
+                                                if (resultPeaksList3.size >= 2 && resultDistances.size > 0) {
+                                                    val distMean = resultDistances.sum() / resultDistances.size
+                                                    val distIt = resultDistances.iterator()
+                                                    while(distIt.hasNext()) {
+                                                        val dst = distIt.next()
+                                                        if (Math.abs(dst - distMean) > 25*dst/100) {
+                                                            Log.d("Msf", "Remove too uneven distance dst=$dst mean=$distMean")
+                                                            distIt.remove()
+                                                        }
+                                                    }
+                                                    if (resultDistances.size > 0) {
+                                                        val mean = resultDistances.sum() / resultDistances.size
+
+                                                        val peaksChartData = resultPeaksList3.map {
+                                                            it.toFloat() to averageArray[it].toFloat()
+                                                        }
+
+                                                        peakDataSubject.onNext(peaksChartData)
 
 
-
-                                                    val FRAMES_PER_SECOND = 30
-                                                    val heartRate = FRAMES_PER_SECOND * 60 / mean
-                                                    previousBeatsAverage = heartRate
-                                                    Log.d("HeartCheck", "heartRate=$heartRate" +
-                                                            " index=$indexOfMin mean=$mean peaks=${peaks.size}")
-                                                    publishSubject.onNext(Bpm(heartRate, PulseType.ON))
+                                                        val FRAMES_PER_SECOND = 30
+                                                        val heartRate = FRAMES_PER_SECOND * 60 / mean
+                                                        previousBeatsAverage = heartRate
+                                                        Log.d("HeartCheck", "heartRate=$heartRate" +
+                                                                " index=$indexOfMin mean=$mean peaks=${peaks.size}")
+                                                        publishSubject.onNext(Bpm(heartRate, PulseType.ON))
+                                                    }
                                                 }
                                             }
                                         }
