@@ -42,7 +42,7 @@ open class HeartRateOmeter {
             val minDispersion: Int = 0
     )
 
-    private var wakeLockTimeOut: Long = 10_000
+    private var wakeLockTimeOut: Long = 60000L
 
     protected var surfaceHolder: SurfaceHolder? = null
 
@@ -112,6 +112,9 @@ open class HeartRateOmeter {
         context?.get()?.let {
             cameraSupport = CameraModule.provideCameraSupport(context = it).open(0)
         }
+
+        chartDataSubject.onNext(emptyList())
+        peakDataSubject.onNext(emptyList())
 
         // portrait
         cameraSupport?.setDisplayOrientation(90)
@@ -224,10 +227,29 @@ open class HeartRateOmeter {
 
     private var fingerDetected: Boolean = false
         set(value) {
-            if (field != value)
+            if (field != value) {
                 fingerDetectionListener?.invoke(value)
+                if (value == false) {
+                    wakelock?.also { wakelock ->
+                        if (wakelock.isHeld() == true) {
+                            wakelock.release()
+                        }
+                    }
+                } else {
+                    wakelock?.also { wakelock ->
+                        if (wakelock.isHeld() != true) {
+                            wakelock.acquire(wakeLockTimeOut)
+                        }
+                    }
+                }
+            }
             field = value
         }
+
+    private fun clearChartData() {
+        peakDataSubject.onNext(emptyList())
+        chartDataSubject.onNext(emptyList())
+    }
 
     protected fun createCameraPreviewCallback(): Camera.PreviewCallback {
         return object : Camera.PreviewCallback {
@@ -247,6 +269,10 @@ open class HeartRateOmeter {
 
                 if (data == null) {
                     log("Data is null!")
+                    return
+                }
+
+                if (cameraSupport == null) {
                     return
                 }
 
@@ -357,6 +383,10 @@ open class HeartRateOmeter {
                     return
                 }
 
+                if (cameraSupport == null) {
+                    return
+                }
+
                 val size = camera.parameters.previewSize
                 if (size == null) {
                     log("Size is null!")
@@ -456,96 +486,21 @@ open class HeartRateOmeter {
                                         }
                                     }
 
-                                    Log.d("PeakCheck", "peaksMap size=${peaks.size}" +
-                                            "chartPeaks size = ${chartPeaks.size}")
+                                    val resultDistances = distancesFromPeaks(chartPeaks)
+                                    val resultDistances2 = removeDistancesFarFromMean(resultDistances)
+                                    if (resultDistances2.size > 0) {
+                                        val mean = resultDistances2.sum() / resultDistances2.size
 
-                                    // This map is sorted by peak size
-                                    val sortedPeaks = peaks.sortedBy { it.second }
+                                        sendPeakData(chartPeaks, averageArray)
 
-                                    // GET SETS OF k HIGHEST PEAKS, k from 5 to 20
-                                    // CALCULATE DISTANCES BETWEEN PEAKS IN EACH SET
-
-                                    val distancesList = ArrayList<ArrayList<Int>>()
-                                    for (k in 5..20) {
-                                        // Find dispersion of distances between peaks in each set
-                                        val distances = ArrayList<Int>()
-                                        val iterator = sortedPeaks.iterator()
-                                        var previous: Int = -1
-                                        var i = 0
-                                        while (iterator.hasNext() && i < k) {
-                                            val value = iterator.next()
-                                            if (previous != -1) {
-                                                distances.add(Math.abs(value.first - previous))
-                                            }
-                                            previous = value.first
-                                            i++
-                                        }
-                                        distancesList.add(distances)
+                                        val FRAMES_PER_SECOND = 30
+                                        val heartRate = FRAMES_PER_SECOND * 60 / mean
+                                        previousBeatsAverage = heartRate
+                                        Log.d("HeartCheck", "heartRate=$heartRate" +
+                                                "  mean=$mean peaks=${peaks.size}")
+                                        publishSubject.onNext(Bpm(heartRate, PulseType.ON))
                                     }
 
-                                    // Here we want to throw away peaks with distance to next less than min
-                                    // And after that, ignore sets with big difference between min and max distance
-
-                                    // CALCULATE DISPERSION FOR EACH SET OF PEAKS
-
-                                    val meanList = ArrayList<Int>()
-
-                                    val dispersions = distancesList.map { distancesSet ->
-                                        if (distancesSet.size == 0) {
-                                            Int.MAX_VALUE
-                                        } else {
-                                            val mean = distancesSet.sum() / distancesSet.size
-                                            meanList.add(mean)
-                                            distancesSet.map { distance ->
-                                                (distance - mean) * (distance - mean)
-                                            }.sum() / distancesSet.size
-                                        }
-                                    }
-
-                                    // CHOOSE SET WITH MIN DISPERSION
-
-                                    val indexOfMin = dispersions.withIndex()
-                                            .minBy { (_, dispersion) -> dispersion }?.index
-
-
-
-                                    indexOfMin?.also {
-                                        val minDispersion = dispersions[indexOfMin]
-                                        val resultDistanceList = distancesList[indexOfMin]
-                                        // key - peak value - distance
-                                        if (distancesList.size > 0 && sortedPeaks.size > 3) {
-
-                                            val resultPeaksList = getResultPeaks(sortedPeaks,
-                                                    resultDistanceList.size)
-
-                                            // these are x-values, sort by x
-                                            val sortedResultPeaksList = resultPeaksList.sorted()
-
-                                            val resultPeaksList2 =
-                                                    excludeIfDistanceLessThanMin(sortedResultPeaksList)
-
-                                            if (resultPeaksList2.size >= 2) {
-                                                val resultPeaksList3 = resultPeaksList2//removePeaksWithDistancesFarFromMean(resultPeaksList2)
-                                                if (resultPeaksList3.size >= 2) {
-                                                    val resultDistances = distancesFromPeaks(chartPeaks)
-                                                    val resultDistances2 = removeDistancesFarFromMean(resultDistances)
-                                                    if (resultDistances2.size > 0) {
-                                                        val mean = resultDistances2.sum() / resultDistances2.size
-
-                                                        sendPeakData(chartPeaks, averageArray)
-
-                                                        val FRAMES_PER_SECOND = 30
-                                                        val heartRate = FRAMES_PER_SECOND * 60 / mean
-                                                        previousBeatsAverage = heartRate
-                                                        Log.d("HeartCheck", "heartRate=$heartRate" +
-                                                                " index=$indexOfMin mean=$mean peaks=${peaks.size}")
-                                                        publishSubject.onNext(Bpm(heartRate, PulseType.ON,
-                                                                minDispersion))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
                                 }
 
                                 PROCESSING.set(false)
@@ -637,6 +592,9 @@ open class HeartRateOmeter {
     }
 
     private fun removeDistancesFarFromMean(resultDistances: MutableList<Int>): List<Int> {
+        if (resultDistances.isEmpty()) {
+            return resultDistances
+        }
         val distMean = resultDistances.sum() / resultDistances.size
         val distIt = resultDistances.iterator()
         while(distIt.hasNext()) {

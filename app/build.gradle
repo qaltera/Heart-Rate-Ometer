@@ -9,6 +9,7 @@ android {
 
     defaultConfig {
         applicationId "net.kibotu.heartrateometer.app"
+        applicationIdSuffix ".qaltera"
 
         minSdkVersion minSdkVer
         targetSdkVersion targetSdkVer
