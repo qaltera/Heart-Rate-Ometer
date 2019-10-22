@@ -67,9 +67,9 @@ class ChartHolder(private val chart: LineChart) {
             // horizontal grid lines
             yAxis.enableGridDashedLine(10f, 10f, 0f)
 
-            // axis range
-            yAxis.axisMinimum = 33000F///230f
-            yAxis.axisMaximum = 37000F///250f
+//            // axis range
+//            yAxis.axisMinimum = 33000F///230f
+//            yAxis.axisMaximum = 37000F///250f
         }
 
 
@@ -111,6 +111,11 @@ class ChartHolder(private val chart: LineChart) {
             BarEntry(it.first, it.second)
         }
 
+        // axis range
+        val yAxis = chart.axisLeft
+        yAxis.axisMinimum = (data.minBy { it.second }?.let{it.second} ?: 33000F) - 500
+        yAxis.axisMaximum = (data.maxBy { it.second }?.let{it.second} ?: 37000F) + 500
+
         val set1: LineDataSet
 
         if (chart.data != null && chart.data.dataSetCount > 0) {
@@ -120,7 +125,6 @@ class ChartHolder(private val chart: LineChart) {
             chart.data.notifyDataChanged()
             chart.notifyDataSetChanged()
             chart.invalidate()
-
         } else {
             set1 = LineDataSet(values, RED_AVG_VALUES)
 

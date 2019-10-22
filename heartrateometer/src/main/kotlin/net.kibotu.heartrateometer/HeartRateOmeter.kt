@@ -32,14 +32,16 @@ open class HeartRateOmeter {
 
     companion object {
         var enableLogging: Boolean = false
+        val FRAMES_PER_SECOND = 30
+        internal val AVERAGE_ARRAY_SIZE = FRAMES_PER_SECOND*10
+        val EPS = 12 //15 30
     }
 
     enum class PulseType { OFF, ON }
 
     data class Bpm(
             val value: Int,
-            val type: PulseType,
-            val minDispersion: Int = 0
+            val type: PulseType
     )
 
     private var wakeLockTimeOut: Long = 60000L
@@ -201,7 +203,6 @@ open class HeartRateOmeter {
         // parameters?.setPreviewSize(width, height)
         getSmallestPreviewSize(width, height, parameters)?.let {
             parameters?.setPreviewSize(it.width, it.height)
-            Log.d("HeartCheck","Using width ${it.width} and height ${it.height}")
         }
 
         cameraSupport?.parameters = parameters
@@ -353,27 +354,19 @@ open class HeartRateOmeter {
     protected fun createCameraPreviewCallback2(): Camera.PreviewCallback {
 
         return object : Camera.PreviewCallback {
-
-            internal var beatsIndex = 0
-            internal var beats = 0.0
             internal var startTime = System.currentTimeMillis()
 
-            internal val PROCESSING = AtomicBoolean(false)
+            internal val processing = AtomicBoolean(false)
 
-            internal val AVERAGE_ARRAY_SIZE = 300
             internal val averageArray: LinkedList<Int> = LinkedList()
             internal val derivArray: MutableList<Int> = ArrayList()
-            internal val peaks: MutableList<Pair<Int, Int>> = ArrayList<Pair<Int, Int>>()
+            //internal val peaks: MutableList<Pair<Int, Int>> = ArrayList<Pair<Int, Int>>()
+            internal val peakPositions = ArrayList<Int>()
 
             var framesCount: Int = 0
             var timeAtLastFramePortionStart: Long = 0L
 
             var buffer: ByteArray? = null
-
-//            internal val BEATS_ARRAY_SIZE = 3
-//            internal val BEATS_ARRAY = IntArray(BEATS_ARRAY_SIZE)
-
-            internal var currentPixelType: PulseType = PulseType.OFF
 
             private var previousBeatsAverage: Int = 0
 
@@ -404,111 +397,128 @@ open class HeartRateOmeter {
                 }
 
                 framesCount++
-                if (framesCount == 30) {
+                if (framesCount == FRAMES_PER_SECOND) {
                     val now = SystemClock.elapsedRealtime()
-                    Log.d("TimeCheck", "received 30 frames in ${now - timeAtLastFramePortionStart} ms")
+                    Log.d(TAG, "received 30 frames in ${now - timeAtLastFramePortionStart} ms")
                     timeAtLastFramePortionStart = now
                     framesCount = 0
                 }
 
                 cameraSupport?.addCallbackBuffer(data)
 
-
-
                 runBlocking {
                     withContext(Dispatchers.Default) {
-
-
-                        if (!PROCESSING.compareAndSet(false, true)) {
+                        if (!processing.compareAndSet(false, true)) {
                             log("Have to return...")
-
                         } else {
-
-
                             val width = size.width
                             val height = size.height
-
-                            // Logger.d("SIZE: width: " + width + ", height: " + height);
-
-                            Log.d("HeartCheck", "buffer size " + data.size + "width= " + width +
-                                    "height=" + height)
+                            log("buffer size=${data.size} width=${width} height=$height")
                             val imageAverage = MathHelper.decodeYUV420SPtoRedAvg(buf, width, height)
-                            log("imageAverage not started: " + imageAverage)
                             if (imageAverage == 0 || imageAverage < 199) {
-                                PROCESSING.set(false)
+                                processing.set(false)
                                 fingerDetected = false
-
                             } else {
                                 fingerDetected = true
 
-                                while (averageArray.size >= AVERAGE_ARRAY_SIZE) {
-                                    averageArray.removeFirst()
-                                }
-                                averageArray.add(imageAverage)
+                                updateAverageArray(
+                                        averageArray,
+                                        imageAverage,
+                                        AVERAGE_ARRAY_SIZE
+                                )
+                                sendChartData(averageArray)
 
-                                val chartData = ArrayList<Pair<Float,Float>>()
-                                for (i in 0 until averageArray.size) {
-                                    chartData.add(i.toFloat() to averageArray[i].toFloat())
-                                }
+                                if (getTotalTimeSec(startTime) >= averageTimer) {
+                                    // Step 1. Calculate array of derivatives
+                                    calculateDerivativesArray(
+                                            averageArray,
+                                            derivArray
+                                    )
 
-                                chartDataSubject.onNext(chartData)
+                                    // Step 2. Calculate peaks
 
-                                val endTime = System.currentTimeMillis()
-                                val totalTimeInSecs = (endTime - startTime) / 1000.0
-                                log("totalTimeInSecs: " + totalTimeInSecs + " >= averageTimer: " + averageTimer)
-                                if (totalTimeInSecs >= averageTimer) {
-                                    // NEW ALGORITHM
+                                    findPeakPositions(peakPositions, derivArray, EPS)
 
-                                    // STEP 1. CALCULATE ARRAY OF DERIVATIVES
+                                    // Step 3. Calculate distances between peaks
+                                    // Step 4. Remove distances which are too far
+                                    //  from mean value
 
-                                    derivArray.clear()
-                                    for (i in 0..averageArray.size) {
-                                        if (i > 0 && i < averageArray.size - 1) {
-                                            val value = (averageArray.get(i - 1) + averageArray.get(i + 1)) / 2
-                                            derivArray.add(value)
-                                        }
-                                    }
+                                    val resultDistances = removeDistancesFarFromMean(
+                                            distancesFromPeaks(peakPositions)
+                                    )
+                                    if (resultDistances.size > 0) {
+                                        sendPeakData(peakPositions, averageArray)
 
-                                    // STEP 2 CALCULATE PEAKS
-                                    val eps = 7//15,30
+                                        val mean = resultDistances.sum() /
+                                                resultDistances.size
 
-                                    //in peaksMap key is peak value and value is position
-                                    peaks.clear()
-                                    val chartPeaks = ArrayList<Int>()
-                                    for (i in 0..derivArray.size) {
-                                        if (i >= eps && i < derivArray.size - eps) {
-                                            val value = derivArray.get(i)
-                                            if (value == findMin(derivArray.subList(i - eps, i + 1)) &&
-                                                    value == findMin(derivArray.subList(i, i + eps + 1))) {
-                                                peaks.add(i to value)
-                                                chartPeaks.add(i)
-                                            }
-                                        }
-                                    }
-
-                                    val resultDistances = distancesFromPeaks(chartPeaks)
-                                    val resultDistances2 = removeDistancesFarFromMean(resultDistances)
-                                    if (resultDistances2.size > 0) {
-                                        val mean = resultDistances2.sum() / resultDistances2.size
-
-                                        sendPeakData(chartPeaks, averageArray)
-
-                                        val FRAMES_PER_SECOND = 30
                                         val heartRate = FRAMES_PER_SECOND * 60 / mean
                                         previousBeatsAverage = heartRate
-                                        Log.d("HeartCheck", "heartRate=$heartRate" +
-                                                "  mean=$mean peaks=${peaks.size}")
+                                        log("heartRate=$heartRate" +
+                                                "  mean=$mean peaks=${peakPositions.size}")
                                         publishSubject.onNext(Bpm(heartRate, PulseType.ON))
                                     }
-
                                 }
 
-                                PROCESSING.set(false)
+                                processing.set(false)
                             }
                         }
                     }
-
                 }
+            }
+        }
+    }
+
+    private fun getTotalTimeSec(startTime: Long): Int {
+        val endTime = System.currentTimeMillis()
+        val totalTimeInSecs = (endTime - startTime) / 1000.0
+        log("totalTimeInSecs: " + totalTimeInSecs + " >= averageTimer: " + averageTimer)
+        return totalTimeInSecs.toInt()
+    }
+
+    private fun updateAverageArray(averageArray: LinkedList<Int>,
+                                   imageAverage: Int,
+                                   maxSize: Int) {
+        while (averageArray.size >= maxSize) {
+            averageArray.removeFirst()
+        }
+        averageArray.add(imageAverage)
+    }
+
+    private fun sendChartData(averageArray: List<Int>) {
+        val chartData = ArrayList<Pair<Float,Float>>()
+        for (i in 0 until averageArray.size) {
+            chartData.add(i.toFloat() to averageArray[i].toFloat())
+        }
+        chartDataSubject.onNext(chartData)
+    }
+
+    private fun findPeakPositions(
+            peakPositions: MutableList<Int>,
+            derivArray: List<Int>,
+            eps:Int) {
+        peakPositions.clear()
+        for (i in 0..derivArray.size) {
+            if (i >= eps && i < derivArray.size - eps) {
+                val value = derivArray.get(i)
+                if (value == findMin(derivArray.subList(i - eps, i + 1)) &&
+                        value == findMin(derivArray.subList(i, i + eps + 1))) {
+                    //peaks.add(i to value)
+                    peakPositions.add(i)
+                }
+            }
+        }
+    }
+
+    private fun calculateDerivativesArray(
+            averageArray: List<Int>,
+            derivArray: MutableList<Int>)
+    {
+        derivArray.clear()
+        for (i in 0..averageArray.size) {
+            if (i > 0 && i < averageArray.size - 1) {
+                val value = (averageArray.get(i - 1) + averageArray.get(i + 1)) / 2
+                derivArray.add(value)
             }
         }
     }
@@ -600,7 +610,6 @@ open class HeartRateOmeter {
         while(distIt.hasNext()) {
             val dst = distIt.next()
             if (Math.abs(dst - distMean) > 25*dst/100) {
-                Log.d("Msf", "Remove too uneven distance dst=$dst mean=$distMean")
                 distIt.remove()
             }
         }

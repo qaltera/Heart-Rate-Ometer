@@ -32,7 +32,6 @@ class CameraPreLolipop : CameraSupport() {
 
     private fun addBuffer(size: Int) {
         val frameBuffer = ByteArray(size)
-        Log.d("HeartCheck", "Adding buffers of size $size")
         camera?.addCallbackBuffer(frameBuffer)
     }
 
@@ -56,11 +55,8 @@ class CameraPreLolipop : CameraSupport() {
 
     override fun setPreviewCallback(previewCallback: Camera.PreviewCallback?) {
         if (previewCallback != null) {
-            Log.d("HeartCheck", "setPreviewCallback")
-
             camera?.setPreviewCallbackWithBuffer(previewCallback)
         }
-//        camera?.setPreviewCallback(previewCallback)
     }
 
     override fun addBuffers() {
