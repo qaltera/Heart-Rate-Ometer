@@ -113,8 +113,8 @@ class ChartHolder(private val chart: LineChart) {
 
         // axis range
         val yAxis = chart.axisLeft
-        yAxis.axisMinimum = (data.minBy { it.second }?.let{it.second} ?: 33000F) - 500
-        yAxis.axisMaximum = (data.maxBy { it.second }?.let{it.second} ?: 37000F) + 500
+        yAxis.axisMinimum = (data.filter { it.second != 0F }.minBy { it.second }?.let{Math.max(it.second, 30000F)} ?: 33000F) - 500
+        yAxis.axisMaximum = (data.filter { it.second != 0F }.maxBy { it.second }?.let{Math.min(it.second, 40000F)} ?: 37000F) + 500
 
         val set1: LineDataSet
 
