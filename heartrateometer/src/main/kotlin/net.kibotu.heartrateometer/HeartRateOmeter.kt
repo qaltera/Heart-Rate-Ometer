@@ -34,7 +34,7 @@ open class HeartRateOmeter {
         val FRAMES_PER_SECOND = 30
         internal val AVERAGE_ARRAY_SIZE = FRAMES_PER_SECOND * 10
         val EPS = 12 //15 30
-        val MIN_RED_AVG_VALUE = 28000
+        val MIN_RED_AVG_VALUE = 32000
     }
 
     enum class PulseType { OFF, ON }
