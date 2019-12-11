@@ -46,15 +46,9 @@ open class HeartRateOmeter {
 
     private var wakeLockTimeOut: Long = 5*60000L
 
-    protected var surfaceHolder: SurfaceHolder? = null
-
     protected var wakelock: PowerManager.WakeLock? = null
 
-    protected lateinit var previewCallback: Camera.PreviewCallback
-
-    protected lateinit var surfaceCallback: SurfaceHolder.Callback
-
-    protected val publishSubject: PublishSubject<Bpm>
+    protected val publishSubject: PublishSubject<Int>
 
     public val chartDataSubject: PublishSubject<List<Pair<Float, Float>>> = PublishSubject.create()
 
@@ -70,7 +64,7 @@ open class HeartRateOmeter {
     private var fingerDetectionListener: ((Boolean) -> Unit)? = null
 
     init {
-        publishSubject = PublishSubject.create<Bpm>()
+        publishSubject = PublishSubject.create<Int>()
     }
 
     var averageTimer: Int = -1
@@ -80,30 +74,34 @@ open class HeartRateOmeter {
         return this
     }
 
-    fun bpmUpdates(surfaceView: SurfaceView): Observable<Bpm> {
-        return bpmUpdates(surfaceView.context, surfaceView.holder)
+    fun observeBpmUpdates(surfaceView: SurfaceView): Observable<Int> {
+        return observeBpmUpdates(surfaceView.context, surfaceView.holder)
     }
 
-    protected fun bpmUpdates(context: Context, surfaceHolder: SurfaceHolder): Observable<Bpm> {
+    protected fun observeBpmUpdates(context: Context, surfaceHolder: SurfaceHolder): Observable<Int> {
 
-        previewCallback = if (averageTimer == -1)
+        val previewCallback = if (averageTimer == -1) {
             createCameraPreviewCallback()
-        else
+        } else {
             createCameraPreviewCallback2()
+        }
 
-        surfaceCallback = createSurfaceHolderCallback()
+        val surfaceCallback = createSurfaceHolderCallback()
 
         this.context = WeakReference(context)
-        this.surfaceHolder = surfaceHolder
         return publishSubject
+                .startWith(-1)
                 .doOnSubscribe {
-                    publishSubject.onNext(Bpm(-1, PulseType.OFF))
-                    start()
+                    start(surfaceHolder, previewCallback, surfaceCallback)
                 }
                 .doOnDispose { cleanUp() }
     }
 
-    protected fun start() {
+    protected fun start(
+            surfaceHolder: SurfaceHolder,
+            previewCallback: Camera.PreviewCallback,
+            surfaceHolderCallback: SurfaceHolder.Callback
+    ) {
         log("start")
 
         wakelock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, context?.get()?.javaClass?.canonicalName)
@@ -117,24 +115,35 @@ open class HeartRateOmeter {
         peakDataSubject.onNext(emptyList())
 
         // portrait
-        cameraSupport?.setDisplayOrientation(90)
-        log(cameraSupport?.getOrientation(0).toString())
+        cameraSupport?.also {
+            it.setDisplayOrientation(90)
+            log(it.getOrientation(0).toString())
+        }
 
-        surfaceHolder?.addCallback(surfaceCallback)
-        surfaceHolder?.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS)
-
-        addCallbacks()
+        surfaceHolder.apply {
+            addCallback(surfaceHolderCallback)
+            setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS)
+            addCameraSupportCallbacks(this, previewCallback)
+        }
 
         startPreview()
     }
 
-    private fun addCallbacks() {
+    private fun addCameraSupportCallbacks(
+            surfaceHolder: SurfaceHolder,
+            previewCallback: Camera.PreviewCallback? = null
+    ) {
         try {
-            cameraSupport?.setPreviewDisplay(surfaceHolder!!)
-            cameraSupport?.setPreviewCallback(previewCallback)
+            cameraSupport?.apply {
+                setPreviewDisplay(surfaceHolder)
+                previewCallback?.also { previewCallback ->
+                    setPreviewCallback(previewCallback)
+                }
+            }
         } catch (throwable: Throwable) {
-            if (enableLogging)
+            if (enableLogging) {
                 throwable.printStackTrace()
+            }
         }
     }
 
@@ -212,7 +221,7 @@ open class HeartRateOmeter {
         return object : SurfaceHolder.Callback {
 
             override fun surfaceCreated(holder: SurfaceHolder) {
-                addCallbacks()
+                addCameraSupportCallbacks(holder)
             }
 
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -342,7 +351,7 @@ open class HeartRateOmeter {
 
                 // log("bpm=$bpm")
 
-                publishSubject.onNext(Bpm(bpm, PulseType.ON))
+                publishSubject.onNext(bpm)
 
                 counter++
 
@@ -405,7 +414,7 @@ open class HeartRateOmeter {
                                 size
                         )
                         if (heartRate > 0) {
-                            publishSubject.onNext(Bpm(heartRate, PulseType.ON))
+                            publishSubject.onNext(heartRate)
                         }
                     }
                 }

@@ -35,17 +35,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val kalman = JKalman(2, 1)
-
-        // measurement [x]
-        val m = Matrix(1, 1)
-
-        // transitions for x, dx
-        val tr = arrayOf(doubleArrayOf(1.0, 0.0), doubleArrayOf(0.0, 1.0))
-        kalman.transition_matrix = Matrix(tr)
-
-        // 1s somewhere?
-        kalman.error_cov_post = kalman.error_cov_post.identity()
+        val kalman = getKalman()
 
         val chartUpdates = heartrateometer.chartDataSubject.subscribe({
             chartHolder?.setData(it)
@@ -55,28 +45,16 @@ class MainActivity : AppCompatActivity() {
             chartHolder?.setPeakData(it)
         }, Throwable::printStackTrace)
 
-
-
         val bpmUpdates = heartrateometer
                 .withAverageAfterSeconds(3)
                 .setFingerDetectionListener(this::onFingerChange)
-                .bpmUpdates(preview)
-                .subscribe({
-
-                    if (it.value == 0)
-                        return@subscribe
-
-                    m.set(0, 0, it.value.toDouble())
-
-                    // state [x, dx]
-                    val s = kalman.Predict()
-
-                    // corrected state [x, dx]
-                    val c = kalman.Correct(m)
-
-                    val bpm = it.copy(value = c.get(0, 0).toInt())
-                    Log.v("HeartRateOmeter", "[onBpm] ${it.value} => ${bpm.value}")
-                    onBpm(bpm)
+                .observeBpmUpdates(preview)
+                .subscribe({ heartRate ->
+                    if (heartRate != 0) {
+                        val bpm = kalmanCorrection(kalman, heartRate)
+                        Log.v("HeartRateOmeter", "[onBpm] $heartRate")
+                        onBpm(bpm)
+                    }
                 }, Throwable::printStackTrace)
 
         subscription?.add(bpmUpdates)
@@ -85,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     @SuppressLint("SetTextI18n")
-    private fun onBpm(bpm: HeartRateOmeter.Bpm) {
+    private fun onBpm(bpm: Int) {
         // Log.v("HeartRateOmeter", "[onBpm] $bpm")
         label.text = "$bpm bpm"
     }
@@ -121,6 +99,34 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private val REQUEST_CAMERA_PERMISSION = 123
+
+        private fun getKalman(): JKalman {
+            val kalman = JKalman(2, 1)
+
+            // transitions for x, dx
+            val tr = arrayOf(doubleArrayOf(1.0, 0.0), doubleArrayOf(0.0, 1.0))
+            kalman.transition_matrix = Matrix(tr)
+
+            // 1s somewhere?
+            kalman.error_cov_post = kalman.error_cov_post.identity()
+
+            return kalman
+        }
+
+        private fun kalmanCorrection(kalman: JKalman, value: Int): Int {
+            // measurement [x]
+            val m = Matrix(1, 1)
+
+            m.set(0, 0, value.toDouble())
+
+            // state [x, dx]
+            val s = kalman.Predict()
+
+            // corrected state [x, dx]
+            val c = kalman.Correct(m)
+
+            return c.get(0, 0).toInt()
+        }
     }
 
     private fun checkPermissions(callbackId: Int, vararg permissionsId: String) {
