@@ -44,18 +44,17 @@ class ChartHolder(private val chart: LineChart) {
     }
 
     fun setRedAvgData(data: List<Pair<Float, Float>>) {
-
         val values = data.map {
             BarEntry(it.first, it.second)
         }
-
         // axis range
         val yAxis = chart.axisLeft
         yAxis.axisMinimum = (data.filter { it.second != 0F }.minBy { it.second }?.let{Math.max(it.second, 30000F)} ?: 33000F) - 500
         yAxis.axisMaximum = (data.filter { it.second != 0F }.maxBy { it.second }?.let{Math.min(it.second, 40000F)} ?: 37000F) + 500
 
-        if (chart.data != null && chart.data.dataSetCount > 0) {
-            val set = chart.data.getDataSetByIndex(0) as LineDataSet
+        val set = chart.data?.getDataSetByLabel(RED_AVG_VALUES, false)
+                as? LineDataSet
+        if (set != null) {
             updateSetWithValues(set, values)
         } else {
             val redValuesSet = createRedValuesSet(values)
@@ -75,8 +74,9 @@ class ChartHolder(private val chart: LineChart) {
             BarEntry(it.first, it.second)
         }
 
-        if (chart.data != null && chart.data.dataSetCount > 1) {
-            val set = chart.data.getDataSetByIndex(1) as LineDataSet
+        val set = chart.data?.getDataSetByLabel(PEAK_VALUES, false)
+                as? LineDataSet
+        if (set != null) {
             updateSetWithValues(set, values)
         } else {
             val peakSet = createPeakSet(values)
