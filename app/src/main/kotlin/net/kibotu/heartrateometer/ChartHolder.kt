@@ -8,6 +8,9 @@ import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
+import com.github.mikephil.charting.components.Legend
+
+
 
 class ChartHolder(private val chart: LineChart) {
 
@@ -21,8 +24,11 @@ class ChartHolder(private val chart: LineChart) {
             // disable description text
             chart.getDescription().setEnabled(false)
 
+            val l = chart.legend
+            l.isEnabled = false
+
             // enable touch gestures
-            chart.setTouchEnabled(true)
+            //chart.setTouchEnabled(true)
 
             // set listeners
             //chart.setOnChartValueSelectedListener(this)
@@ -36,22 +42,25 @@ class ChartHolder(private val chart: LineChart) {
             //chart.setMarker(mv)
 
             // enable scaling and dragging
-            chart.setDragEnabled(true)
-            chart.setScaleEnabled(true)
+            //chart.setDragEnabled(true)
+            //chart.setScaleEnabled(true)
             // chart.setScaleXEnabled(true);
             // chart.setScaleYEnabled(true);
 
             // force pinch zoom along both axis
-            chart.setPinchZoom(true)
+            //chart.setPinchZoom(true)
         }
 
         val xAxis: XAxis
         run {
             // // X-Axis Style // //
             xAxis = chart.getXAxis()
+            xAxis.setDrawLabels(false)
+            xAxis.setDrawGridLines(false)
+            xAxis.setDrawAxisLine(false)
 
             // vertical grid lines
-            xAxis.enableGridDashedLine(10f, 10f, 0f)
+            //xAxis.enableGridDashedLine(10f, 10f, 0f)
             xAxis.axisMinimum = 0F
             xAxis.axisMaximum = 300F
         }
@@ -60,12 +69,15 @@ class ChartHolder(private val chart: LineChart) {
         run {
             // // Y-Axis Style // //
             yAxis = chart.getAxisLeft()
+            yAxis.setDrawLabels(false)
+            yAxis.setDrawGridLines(false)
+            yAxis.setDrawAxisLine(false)
 
             // disable dual axis (only use LEFT axis)
             chart.getAxisRight().setEnabled(false)
 
             // horizontal grid lines
-            yAxis.enableGridDashedLine(10f, 10f, 0f)
+            //yAxis.enableGridDashedLine(10f, 10f, 0f)
 
 //            // axis range
 //            yAxis.axisMinimum = 33000F///230f
@@ -105,7 +117,7 @@ class ChartHolder(private val chart: LineChart) {
 
     }
 
-    fun setData(data: List<Pair<Float, Float>>) {
+    fun setRedAvgData(data: List<Pair<Float, Float>>) {
 
         val values = data.map {
             BarEntry(it.first, it.second)
@@ -126,35 +138,37 @@ class ChartHolder(private val chart: LineChart) {
             chart.notifyDataSetChanged()
             chart.invalidate()
         } else {
-            set1 = LineDataSet(values, RED_AVG_VALUES)
+            val redValuesSet = LineDataSet(values, RED_AVG_VALUES)
 
-            set1.setDrawIcons(false)
+            redValuesSet.setDrawIcons(false)
 
             // black lines and points
-            set1.color = Color.BLACK
-            set1.setCircleColor(Color.BLACK)
+            redValuesSet.color = Color.BLACK
+            redValuesSet.setDrawCircles(false)
+            //set1.setCircleColor(Color.BLACK)
 
             // line thickness and point size
-            set1.lineWidth = 1f
-            set1.circleRadius = 3f
+            redValuesSet.lineWidth = 1f
+            redValuesSet.mode = LineDataSet.Mode.CUBIC_BEZIER
+            //set1.circleRadius = 3f
 
             // draw points as solid circles
-            set1.setDrawCircleHole(false)
+            //set.setDrawCircleHole(false)
 
             //set1.setColors(ColorTemplate.MATERIAL_COLORS);
 
-            val otherSet = if (chart.data != null && chart.data.dataSetCount > 0) {
+            val peakSet = if (chart.data != null && chart.data.dataSetCount > 0) {
                 chart.data.getDataSetByLabel(PEAK_VALUES, true)
             } else null
 
-            val lst = ArrayList<ILineDataSet>()
-            lst.add(set1)
-            if (otherSet != null) {
-                lst.add(otherSet)
+            val sets = ArrayList<ILineDataSet>()
+            sets.add(redValuesSet)
+            if (peakSet != null) {
+                sets.add(peakSet)
             }
 
-            val data = LineData(lst)
-            data.setValueTextSize(10f)
+            val data = LineData(sets)
+            //data.setValueTextSize(10f)
 
             chart.setData(data)
         }
@@ -175,38 +189,37 @@ class ChartHolder(private val chart: LineChart) {
             chart.data.notifyDataChanged()
             chart.notifyDataSetChanged()
             chart.invalidate()
-
         } else {
-            set2 = LineDataSet(values, PEAK_VALUES)
-
-            set2.setDrawIcons(false)
+            val peakSet = LineDataSet(values, PEAK_VALUES)
+//            peakSet.setDrawCircles(false)
+            peakSet.setDrawIcons(false)
 
             // black lines and points
-            set2.color = Color.BLUE
-            set2.setCircleColor(Color.BLUE)
+            peakSet.color = Color.BLUE
+            peakSet.setCircleColor(Color.BLUE)
 
             // line thickness and point size
-            set2.lineWidth = 1f
-            set2.circleRadius = 3f
+            peakSet.lineWidth = 1f
+            //set.circleRadius = 3f
 
             // draw points as solid circles
-            set2.setDrawCircleHole(false)
+            //set.setDrawCircleHole(false)
 
             //set1.setColors(ColorTemplate.MATERIAL_COLORS);
 
 
-            val otherSet = if (chart.data != null && chart.data.dataSetCount > 0) {
+            val redAvgSet = if (chart.data != null && chart.data.dataSetCount > 0) {
                 chart.data.getDataSetByLabel(RED_AVG_VALUES, true)
             } else null
 
-            val lst = ArrayList<ILineDataSet>()
+            val sets = ArrayList<ILineDataSet>()
 
-            if (otherSet != null) {
-                lst.add(otherSet)
+            if (redAvgSet != null) {
+                sets.add(redAvgSet)
             }
-            lst.add(set2)
+            sets.add(peakSet)
 
-            val data = LineData(lst)
+            val data = LineData(sets)
             //data.setValueTextSize(10f)
 
             chart.setData(data)

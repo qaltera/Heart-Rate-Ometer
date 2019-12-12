@@ -38,7 +38,7 @@ class MainActivity : AppCompatActivity() {
         val kalman = getKalman()
 
         val chartUpdates = heartrateometer.chartDataSubject.subscribe({
-            chartHolder?.setData(it)
+            chartHolder?.setRedAvgData(it)
         }, Throwable::printStackTrace)
 
         val peakUpdates = heartrateometer.peakDataSubject.subscribe({
