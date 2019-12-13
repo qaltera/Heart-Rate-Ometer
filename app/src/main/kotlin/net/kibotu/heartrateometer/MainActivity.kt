@@ -71,10 +71,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun onFingerChange(fingerDetected: Boolean){
          runOnUiThread {
-             finger.visibility = if (fingerDetected) {
-                 View.VISIBLE
+             finger.text = if (fingerDetected) {
+                 getString(R.string.finger_detected)
              } else {
-                 View.INVISIBLE
+                 ""
              }
          }
     }

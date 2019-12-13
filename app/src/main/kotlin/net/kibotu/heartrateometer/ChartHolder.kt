@@ -123,6 +123,8 @@ class ChartHolder(private val chart: LineChart) {
         redValuesSet.setDrawCircles(false)
         redValuesSet.lineWidth = 1f
         redValuesSet.mode = LineDataSet.Mode.CUBIC_BEZIER
+        redValuesSet.fillColor = Color.CYAN
+        redValuesSet.setDrawFilled(true)
         return redValuesSet
     }
 
