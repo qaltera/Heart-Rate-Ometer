@@ -46,6 +46,7 @@
         android:gravity="center"
         android:textColor="@android:color/black"
         android:textSize="32sp"
+        android:text="@string/finger_detected"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toRightOf="@+id/label"
         app:layout_constraintRight_toRightOf="parent"

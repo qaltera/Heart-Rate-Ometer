@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Heart-Rate-Ometer</string>
+    <string name="finger_detected">Finger detected</string>
 </resources>

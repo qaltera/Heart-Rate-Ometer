@@ -16,6 +16,7 @@ class ChartHolder(private val chart: LineChart) {
         run {
             chart.setBackgroundColor(Color.WHITE)
             chart.getDescription().setEnabled(false)
+            chart.setViewPortOffsets(4f, 4f, 4f, 4f)
 
             val l = chart.legend
             l.isEnabled = false

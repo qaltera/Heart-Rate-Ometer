@@ -8,6 +8,7 @@ import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
+import android.view.View
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.android.synthetic.main.activity_main.*
 import net.kibotu.heartrateometer.app.R
@@ -69,7 +70,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onFingerChange(fingerDetected: Boolean){
-         finger.text = "$fingerDetected"
+         runOnUiThread {
+             finger.visibility = if (fingerDetected) {
+                 View.VISIBLE
+             } else {
+                 View.INVISIBLE
+             }
+         }
     }
 
 // region lifecycle

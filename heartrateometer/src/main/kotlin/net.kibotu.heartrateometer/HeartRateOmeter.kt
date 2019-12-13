@@ -13,11 +13,15 @@ import android.view.WindowManager
 import de.charite.balsam.utils.camera.CameraModule
 import de.charite.balsam.utils.camera.CameraSupport
 import io.reactivex.Observable
+import io.reactivex.disposables.Disposable
 import io.reactivex.subjects.PublishSubject
 import kotlinx.coroutines.*
 import org.apache.commons.collections4.queue.CircularFifoQueue
+import org.reactivestreams.Subscriber
+import org.reactivestreams.Subscription
 import java.lang.ref.WeakReference
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.collections.ArrayList
 
@@ -35,6 +39,7 @@ open class HeartRateOmeter {
         internal val AVERAGE_ARRAY_SIZE = FRAMES_PER_SECOND * 10
         val EPS = 12 //15 30
         val MIN_RED_AVG_VALUE = 32000
+        const val FINGER_DEBOUNCE_TIMEOUT_MS = 150L
     }
 
     enum class PulseType { OFF, ON }
@@ -50,6 +55,8 @@ open class HeartRateOmeter {
 
     protected val publishSubject: PublishSubject<Int>
 
+    private val fingerDetectionSubject: PublishSubject<Boolean> = PublishSubject.create()
+
     public val chartDataSubject: PublishSubject<List<Pair<Float, Float>>> = PublishSubject.create()
 
     public val peakDataSubject: PublishSubject<List<Pair<Float, Float>>> = PublishSubject.create()
@@ -63,6 +70,8 @@ open class HeartRateOmeter {
 
     private var fingerDetectionListener: ((Boolean) -> Unit)? = null
 
+    private var fingerDetectionSubscription: Disposable? = null
+
     init {
         publishSubject = PublishSubject.create<Int>()
     }
@@ -72,6 +81,12 @@ open class HeartRateOmeter {
     fun withAverageAfterSeconds(averageTimer: Int): HeartRateOmeter {
         this.averageTimer = averageTimer
         return this
+    }
+
+    fun observeFingerDetection(): Observable<Boolean> {
+        return fingerDetectionSubject.startWith(false)
+                .distinctUntilChanged()
+                .debounce(FINGER_DEBOUNCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     }
 
     fun observeBpmUpdates(surfaceView: SurfaceView): Observable<Int> {
@@ -125,6 +140,10 @@ open class HeartRateOmeter {
             setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS)
             addCameraSupportCallbacks(this, previewCallback)
         }
+
+        fingerDetectionSubscription = observeFingerDetection().subscribe({ detected ->
+            fingerDetected = detected
+        }, Throwable::printStackTrace)
 
         startPreview()
     }
@@ -309,11 +328,11 @@ open class HeartRateOmeter {
                 val imgAvg = MathHelper.decodeYUV420SPtoRedAvg(data.clone(), width, height)
                 if (imgAvg == 0 || imgAvg < 199) {
                     PROCESSING.set(false)
-                    fingerDetected = false
+                    fingerDetectionSubject.onNext(false)
                     return
                 }
 
-                fingerDetected = true
+                fingerDetectionSubject.onNext(true)
 
                 sampleQueue.add(imgAvg.toDouble())
                 timeQueue.add(System.currentTimeMillis())
@@ -435,14 +454,14 @@ open class HeartRateOmeter {
         val imageAverage = MathHelper.decodeYUV420SPtoRedAvg(buf, width, height)
         if (imageAverage == 0 || imageAverage < MIN_RED_AVG_VALUE) {
             log("fingerDetected is false")
-            fingerDetected = false
+            fingerDetectionSubject.onNext(false)
         } else {
             log("fingerDetected is true")
             if (fingerDetected == false) {
                 clearChartData()
                 averageArray.clear()
             }
-            fingerDetected = true
+            fingerDetectionSubject.onNext(true)
 
             updateAverageArray(
                     averageArray,
@@ -731,6 +750,10 @@ open class HeartRateOmeter {
 
         if (wakelock?.isHeld == true) {
             wakelock?.release()
+        }
+
+        fingerDetectionSubscription?.also {
+            it.dispose()
         }
 
         cameraSupport?.apply {
