@@ -9,6 +9,7 @@ import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import android.view.View
+import android.view.WindowManager
 import io.reactivex.disposables.CompositeDisposable
 import kotlinx.android.synthetic.main.activity_main.*
 import net.kibotu.heartrateometer.app.R
@@ -71,10 +72,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun onFingerChange(fingerDetected: Boolean){
          runOnUiThread {
-             finger.text = if (fingerDetected) {
-                 getString(R.string.finger_detected)
+             if (fingerDetected) {
+                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                 finger.text = getString(R.string.finger_detected)
              } else {
-                 ""
+                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                 finger.text = ""
              }
          }
     }

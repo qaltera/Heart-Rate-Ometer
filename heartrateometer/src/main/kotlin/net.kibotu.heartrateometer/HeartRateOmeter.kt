@@ -49,10 +49,6 @@ open class HeartRateOmeter {
             val type: PulseType
     )
 
-    private var wakeLockTimeOut: Long = 5*60000L
-
-    protected var wakelock: PowerManager.WakeLock? = null
-
     protected val publishSubject: PublishSubject<Int>
 
     private val fingerDetectionSubject: PublishSubject<Boolean> = PublishSubject.create()
@@ -117,10 +113,7 @@ open class HeartRateOmeter {
             previewCallback: Camera.PreviewCallback,
             surfaceHolderCallback: SurfaceHolder.Callback
     ) {
-        log("start")
-
-        wakelock = powerManager?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, context?.get()?.javaClass?.canonicalName)
-        wakelock?.acquire(wakeLockTimeOut)
+        Log.d(TAG,"start() called")
 
         context?.get()?.let {
             cameraSupport = CameraModule.provideCameraSupport(context = it).open(0)
@@ -255,22 +248,6 @@ open class HeartRateOmeter {
         set(value) {
             if (field != value) {
                 fingerDetectionListener?.invoke(value)
-                if (value == false) {
-                    //clearChartData()
-                    wakelock?.also { wakelock ->
-                        if (wakelock.isHeld() == true) {
-                            Log.d(TAG,"release wakelock")
-                            wakelock.release()
-                        }
-                    }
-                } else {
-                    wakelock?.also { wakelock ->
-                        if (wakelock.isHeld() != true) {
-                            Log.d(TAG, "acquire wakelock")
-                            wakelock.acquire(wakeLockTimeOut)
-                        }
-                    }
-                }
             }
             field = value
         }
@@ -746,11 +723,7 @@ open class HeartRateOmeter {
     }
 
     protected fun cleanUp() {
-        log("cleanUp")
-
-        if (wakelock?.isHeld == true) {
-            wakelock?.release()
-        }
+        Log.d(TAG, "cleanUp called")
 
         fingerDetectionSubscription?.also {
             it.dispose()
